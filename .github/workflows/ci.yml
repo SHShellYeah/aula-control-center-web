@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Build & Verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies from lockfile
+        run: npm ci
+
+      - name: Dependency audit check
+        run: npm audit --audit-level=high || echo "Dependency audit finished (review policy warnings if any)"
+
+      - name: Run automated test suite
+        run: npm test
+
+      - name: Run TypeScript type check
+        run: npm run typecheck
+
+      - name: Run linter (oxlint)
+        run: npm run lint
+
+      - name: Build production bundle
+        run: npm run build

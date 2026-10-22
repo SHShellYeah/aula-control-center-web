@@ -1,20 +1,20 @@
 import React from 'react';
+import { Shield } from 'lucide-react';
 
 interface OverviewProps {
   isConnected: boolean;
   modifiedCount: number;
   mode?: 'simulation' | 'webhid-readonly';
-  onConnect: () => void;
-  onSwitchToSimulator?: () => void;
+  activeProfileName?: string;
   keyboardElement: React.ReactNode;
+  onNavigateToProfiles?: () => void;
 }
 
 export const Overview: React.FC<OverviewProps> = ({
   modifiedCount,
-  mode = 'simulation',
-  onConnect,
-  onSwitchToSimulator,
+  activeProfileName = 'Factory Default ANSI',
   keyboardElement,
+  onNavigateToProfiles,
 }) => {
   return (
     <div className="space-y-6">
@@ -31,24 +31,22 @@ export const Overview: React.FC<OverviewProps> = ({
 
           <div className="relative z-10 flex items-center justify-between">
             <span className="text-[10px] font-mono tracking-widest text-zinc-500 uppercase font-medium">
-              HARDWARE MATRIX VIEW
+              SIMULATED MATRIX VIEW
             </span>
 
-            {mode === 'simulation' ? (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/40 border border-cyan-800/50 px-2.5 py-1 rounded-full">
+                Simulator Mode
+              </span>
               <button
-                onClick={onConnect}
-                className="px-3.5 py-1.5 rounded-lg bg-white hover:bg-zinc-200 text-black font-bold text-xs transition-all shadow-md"
+                disabled
+                title="Physical hardware operations are deliberately disabled in Milestone 1 to protect device memory."
+                className="px-3.5 py-1.5 rounded-lg bg-[#181818] border border-[#2a2a2a] text-zinc-500 font-bold text-xs cursor-not-allowed opacity-75 flex items-center gap-1.5"
               >
-                Connect Real HID
+                <Shield className="w-3.5 h-3.5 text-zinc-500" />
+                Hardware Disabled (M1)
               </button>
-            ) : (
-              <button
-                onClick={onSwitchToSimulator}
-                className="px-3.5 py-1.5 rounded-lg bg-cyan-950/40 hover:bg-cyan-900/50 text-cyan-300 font-bold text-xs border border-cyan-500/30 transition-all shadow-md"
-              >
-                Return to Simulator
-              </button>
-            )}
+            </div>
           </div>
 
           {/* Centered Keyboard View */}
@@ -76,27 +74,37 @@ export const Overview: React.FC<OverviewProps> = ({
             </div>
           </div>
 
-          {/* Card 2: FIRMWARE / MODIFIED COUNT */}
+          {/* Card 2: ACTIVE PROFILE */}
           <div className="space-y-1 border-b border-[#1f1f1f] pb-5">
-            <div className="text-[10px] font-mono tracking-widest text-zinc-500 uppercase font-medium">
-              FIRMWARE
+            <div className="flex items-center justify-between">
+              <div className="text-[10px] font-mono tracking-widest text-zinc-500 uppercase font-medium">
+                ACTIVE PROFILE
+              </div>
+              {onNavigateToProfiles && (
+                <button
+                  onClick={onNavigateToProfiles}
+                  className="text-[10px] font-mono text-cyan-400 hover:text-cyan-300 underline"
+                >
+                  Manage Profiles →
+                </button>
+              )}
             </div>
-            <div className="text-xl font-extrabold text-white">v1.2</div>
+            <div className="text-xl font-extrabold text-white truncate">{activeProfileName}</div>
             <div className="text-[11px] text-zinc-500">
-              {modifiedCount > 0 ? `${modifiedCount} remapped keys active` : 'Stock factory state (0 custom keys)'}
+              {modifiedCount > 0 ? `${modifiedCount} custom remapped key(s)` : 'Stock factory mapping active'}
             </div>
           </div>
 
           {/* Card 3: CONNECTION */}
           <div className="space-y-1">
             <div className="text-[10px] font-mono tracking-widest text-zinc-500 uppercase font-medium">
-              CONNECTION
+              SAFETY MODE
             </div>
-            <div className="text-xl font-extrabold text-white">
-              {mode === 'webhid-readonly' ? 'Wired USB (Read-Only)' : 'In-Memory Simulator'}
+            <div className="text-xl font-extrabold text-cyan-400">
+              In-Memory Simulator
             </div>
             <div className="text-[11px] text-zinc-500 font-mono">
-              {mode === 'webhid-readonly' ? 'VID 0x258A : PID 0x010C (Telemetry Active)' : '100% RAM Virtual Device (Zero Hardware Risk)'}
+              100% RAM Virtual Device (Zero Hardware Risk)
             </div>
           </div>
         </div>

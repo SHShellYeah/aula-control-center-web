@@ -124,13 +124,18 @@ export class SafetyPolicy {
       );
     }
 
-    // Layer Sentinel invariant (slot 127 = bytes 508..511)
+    // Slot 127 conservative integrity check (bytes 508..511):
+    // In some firmware variants/captures, slot 127 contains [0, 0, 0x5A, 0xA5],
+    // while in standard unpadded dumps it contains [0, 0, 0, 0].
+    // We treat slot 127 conservatively without inventing an artificial hardware invariant.
     const sentOffset = LAYER_SENTINEL_INDEX * 4;
     const sentByte2 = layerData[sentOffset + 2];
     const sentByte3 = layerData[sentOffset + 3];
-    if (sentByte2 !== 0x5A || sentByte3 !== 0xA5) {
+    const isDisputedSentinel = sentByte2 === 0x5A && sentByte3 === 0xA5;
+    const isZeroPadding = sentByte2 === 0x00 && sentByte3 === 0x00;
+    if (!isDisputedSentinel && !isZeroPadding) {
       throw new SafetyViolationError(
-        `Matrix 127 sentinel violated: expected [0x5A, 0xA5] at bytes 510..511, found [0x${sentByte2.toString(16)}, 0x${sentByte3.toString(16)}]`,
+        `Matrix slot 127 check failed: expected either standard zero-padding [0x00, 0x00] or marker [0x5A, 0xA5] at bytes 510..511, found [0x${sentByte2.toString(16)}, 0x${sentByte3.toString(16)}]`,
         'SENTINEL_INVARIANT_VIOLATED'
       );
     }

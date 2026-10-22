@@ -55,7 +55,6 @@ class WebHIDController {
   private listeners: ((state: Partial<WebHIDState>) => void)[] = [];
   private logs: string[] = [];
   private connectedBaseline: Uint8Array | null = null;
-  private disconnectHandler: ((ev: any) => void) | null = null;
 
   constructor() {
     this.simulator = new SimulatorTransport();
@@ -98,7 +97,11 @@ class WebHIDController {
   }
 
   public static isSupported(): boolean {
-    return typeof navigator !== 'undefined' && 'hid' in navigator;
+    try {
+      return typeof navigator !== 'undefined' && 'hid' in navigator && (navigator as any).hid !== undefined;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -131,77 +134,15 @@ class WebHIDController {
   }
 
   /**
-   * Connects to Physical Hardware in STRICT READ-ONLY MODE.
-   * Must be called from a user gesture (button click).
+   * Connects to Physical Hardware.
+   * MILESTONE 1 SAFETY POLICY:
+   * Hardware operations are strictly disabled to protect physical keyboards.
+   * Real HID calls (requestDevice, open, sendFeatureReport, etc.) are blocked.
    */
   public async connect(): Promise<boolean> {
-    if (!WebHIDController.isSupported()) {
-      this.log('WebHID is not supported in this browser. Please use Chrome, Edge, or Brave.');
-      alert('WebHID is not supported in this browser. Please use a Chromium-based browser (Chrome, Edge, Brave).');
-      return false;
-    }
-
-    try {
-      const hidNav = (navigator as any).hid;
-      this.log('Requesting WebHID device chooser (VID: 0x258A, PID: 0x010C)...');
-
-      // Request device with strict hardware filters
-      const devices = await hidNav.requestDevice({
-        filters: [
-          { vendorId: 0x258A, productId: 0x010C }, // Wired USB-C
-          { vendorId: 0x3554, productId: 0xFA09 }, // 2.4G Wireless Dongle
-        ],
-      });
-
-      if (!devices || devices.length === 0) {
-        this.log('Device selection cancelled by user in browser chooser.');
-        return false;
-      }
-
-      const selected = devices[0];
-      this.validateDeviceChooserSelection(selected);
-
-      // Warning if wireless dongle is chosen
-      if (selected.vendorId === 0x3554) {
-        this.log('⚠ NOTICE: 2.4GHz wireless receiver connected. Wireless framing requires 20-byte reports.');
-      }
-
-      if (!selected.opened) {
-        this.log('Opening WebHID interface in read-only mode...');
-        await selected.open();
-      }
-
-      this.device = selected;
-      this.mode = 'webhid-readonly';
-
-      // Register disconnect listener
-      this.disconnectHandler = (ev: any) => {
-        if (ev.device === this.device) {
-          this.log('Hardware device physically disconnected. Returning to simulator.');
-          this.switchToSimulator();
-        }
-      };
-      if ('addEventListener' in hidNav) {
-        hidNav.addEventListener('disconnect', this.disconnectHandler);
-      }
-
-      this.log(`Successfully opened ${this.device.productName || 'AULA F75'} (Hardware Read-Only Diagnostics Active)`);
-
-      this.notify({
-        isConnected: true,
-        isSimulated: false,
-        mode: 'webhid-readonly',
-        deviceName: this.device.productName || 'AULA F75',
-        vendorId: `0x${this.device.vendorId.toString(16).toUpperCase()}`,
-        productId: `0x${this.device.productId.toString(16).toUpperCase()}`,
-      });
-
-      await this.readMatrixData();
-      return true;
-    } catch (err: any) {
-      this.log(`Connection error: ${err.message}`);
-      return false;
-    }
+    this.log('[SAFETY POLICY] Physical hardware connections are disabled in Milestone 1 (Simulator-Only Mode).');
+    this.log('[SAFETY POLICY] All operations run in 100% In-Memory Simulator mode to ensure device safety.');
+    return false;
   }
 
   public validateDeviceChooserSelection(dev: any): void {

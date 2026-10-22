@@ -171,12 +171,24 @@ test('SafetyPolicy: rejects layer payload with corrupted Fn key', () => {
   );
 });
 
-test('SafetyPolicy: rejects layer payload with corrupted sentinel bytes', () => {
+test('SafetyPolicy: accepts layer payload with conservative zero-padding at slot 127', () => {
   const layer = new Uint8Array(512);
   layer[3] = 0x29; // Esc valid
   layer[PHYSICAL_FN_MATRIX_INDEX * 4] = 0x0D; // Fn valid
-  layer[LAYER_SENTINEL_INDEX * 4 + 2] = 0x00; // Corrupted sentinel
+  layer[LAYER_SENTINEL_INDEX * 4 + 2] = 0x00; // Zero padding
   layer[LAYER_SENTINEL_INDEX * 4 + 3] = 0x00;
+
+  assert.doesNotThrow(() => {
+    SafetyPolicy.assertLayerPayloadIntegrity(layer);
+  });
+});
+
+test('SafetyPolicy: rejects layer payload with corrupted non-zero non-sentinel bytes at slot 127', () => {
+  const layer = new Uint8Array(512);
+  layer[3] = 0x29; // Esc valid
+  layer[PHYSICAL_FN_MATRIX_INDEX * 4] = 0x0D; // Fn valid
+  layer[LAYER_SENTINEL_INDEX * 4 + 2] = 0xFF; // Corrupted
+  layer[LAYER_SENTINEL_INDEX * 4 + 3] = 0xEE;
 
   assert.throws(
     () => {
