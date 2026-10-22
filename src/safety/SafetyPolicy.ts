@@ -12,11 +12,22 @@ export class SafetyViolationError extends Error {
   }
 }
 
-// Approved Non-Mutating Read Commands (Independently Corroborated)
+// Approved Hardware Target (Strictly Wired AULA F75 in this milestone)
+export const AULA_WIRED_VID = 0x258A;
+export const AULA_WIRED_PID = 0x010C;
+export const WIRED_REPORT_ID = 6;
+export const WIRED_FRAME_PAYLOAD_LEN = 519; // Payload length without report ID
+
+// Approved Non-Mutating Read Commands (Independently Corroborated for Real Hardware Reads)
 export const APPROVED_READ_OPCODES = {
   DEVICE_QUERY: 0x82,      // 14-byte ASCII model / firmware string
   KEYMAP_READ: 0x83,       // 512-byte Table 0 base keymap layer
-  CONFIG_READ: 0x84,       // 128-byte global LED & sleep config
+} as const;
+
+// Deferred Read Commands (Unverified across all firmware revisions; deferred to protect endpoints)
+export const DEFERRED_READ_OPCODES = {
+  CONFIG_READ: 0x84,       // 128-byte global LED & sleep config (deferred awaiting multi-revision framing audit)
+  COLOR_TABLE_READ: 0x8A,  // Macro / color table read (deferred: lacks multi-firmware pcap; risks STALL_PID on 8051)
 } as const;
 
 // Mutating / Flash Write Commands (Strictly Blocked in Pure Web Mode)
@@ -28,13 +39,16 @@ export const BLOCKED_MUTATING_OPCODES = {
   PER_KEY_LED_WRITE: 0x06,     // Flashes 384-byte per-key LED matrix
   DIRECT_LED_FRAME: 0x08,      // Direct 378-byte RGB frame streaming
   COLOR_TABLE_WRITE: 0x0A,     // Flashes color swatch palette
-  COLOR_TABLE_READ: 0x8A,      // Color table read (unverified on physical F75 revisions)
   RESET_DEVICE: 0x11,          // Triggers factory hardware reset
   WIRELESS_KEYMAP_WRITE: 0x01, // Wireless keymap chunk write
 } as const;
 
 export const APPROVED_READ_OPCODE_SET: ReadonlySet<number> = new Set(
   Object.values(APPROVED_READ_OPCODES)
+);
+
+export const DEFERRED_READ_OPCODE_SET: ReadonlySet<number> = new Set(
+  Object.values(DEFERRED_READ_OPCODES)
 );
 
 export const BLOCKED_MUTATING_OPCODE_SET: ReadonlySet<number> = new Set(
@@ -44,13 +58,13 @@ export const BLOCKED_MUTATING_OPCODE_SET: ReadonlySet<number> = new Set(
 // Hardware Invariants
 export const ESCAPE_MATRIX_INDEX = 0;       // Slot 0 holds the Escape key
 export const PHYSICAL_FN_MATRIX_INDEX = 53; // Matrix Index 53 connects to physical Fn switch
-export const LAYER_SENTINEL_INDEX = 127;    // Slot 127 terminates layer array with 0x5A, 0xA5
+export const LAYER_SENTINEL_INDEX = 127;    // Slot 127 terminates layer array with 0x5A, 0xA5 or 0x00, 0x00
 export const DEFAULT_ESC_KEY_CODE = 0x29;   // HID Usage ID for Keyboard Escape
 
 export class SafetyPolicy {
   /**
    * Evaluates an outbound HID command opcode against the reviewed allowlist.
-   * If the command is mutating or unrecognized, fails closed immediately before touching transport.
+   * If the command is mutating, deferred, or unrecognized, fails closed immediately before touching transport.
    */
   public static assertCommandAllowed(command: number): void {
     if (BLOCKED_MUTATING_OPCODE_SET.has(command)) {
@@ -61,11 +75,65 @@ export class SafetyPolicy {
       );
     }
 
+    if (DEFERRED_READ_OPCODE_SET.has(command)) {
+      throw new SafetyViolationError(
+        `Read command 0x${command.toString(16).padStart(2, '0').toUpperCase()} is deferred in this milestone. ` +
+        `Only explicitly reviewed queries (0x82 and 0x83) are enabled for hardware transmission.`,
+        'DEFERRED_COMMAND_BLOCKED'
+      );
+    }
+
     if (!APPROVED_READ_OPCODE_SET.has(command)) {
       throw new SafetyViolationError(
         `Command 0x${command.toString(16).padStart(2, '0').toUpperCase()} failed closed. ` +
-        `Only explicitly reviewed non-mutating queries are permitted to reach physical hardware.`,
+        `Only explicitly reviewed non-mutating queries (0x82, 0x83) are permitted to reach physical hardware.`,
         'UNKNOWN_COMMAND_REJECTED'
+      );
+    }
+  }
+
+  /**
+   * Restricts hardware access exclusively to the wired AULA F75 (VID 0x258A, PID 0x010C).
+   * 2.4GHz wireless dongles and Bluetooth interfaces are rejected in this milestone.
+   */
+  public static assertWiredDeviceAllowed(vendorId: number, productId: number): void {
+    if (vendorId !== AULA_WIRED_VID || productId !== AULA_WIRED_PID) {
+      throw new SafetyViolationError(
+        `Device (VID 0x${vendorId.toString(16).padStart(4, '0').toUpperCase()}, ` +
+        `PID 0x${productId.toString(16).padStart(4, '0').toUpperCase()}) is not an approved wired AULA F75. ` +
+        `Wireless dongles (0x3554:0xFA09) and third-party devices are strictly rejected in this milestone.`,
+        'DEVICE_NOT_SUPPORTED'
+      );
+    }
+  }
+
+  /**
+   * Validates that feature report ID matches the approved wired pipe (Report ID 6).
+   */
+  public static assertReportIdAllowed(reportId: number): void {
+    if (reportId !== WIRED_REPORT_ID) {
+      throw new SafetyViolationError(
+        `Feature report ID ${reportId} is not approved. Only Report ID ${WIRED_REPORT_ID} is permitted for wired AULA F75 telemetry.`,
+        'UNAPPROVED_REPORT_ID'
+      );
+    }
+  }
+
+  /**
+   * Validates exact outbound feature report payload length and command byte prior to transmission.
+   */
+  public static assertOutboundQueryPayload(command: number, payload: Uint8Array): void {
+    SafetyPolicy.assertCommandAllowed(command);
+    if (payload.length !== WIRED_FRAME_PAYLOAD_LEN) {
+      throw new SafetyViolationError(
+        `Outbound feature report payload length invalid: expected ${WIRED_FRAME_PAYLOAD_LEN} bytes, got ${payload.length}`,
+        'INVALID_QUERY_PAYLOAD_LENGTH'
+      );
+    }
+    if (payload[0] !== command) {
+      throw new SafetyViolationError(
+        `Payload command byte mismatch: expected 0x${command.toString(16)}, found 0x${payload[0].toString(16)}`,
+        'COMMAND_BYTE_MISMATCH'
       );
     }
   }
@@ -96,7 +164,7 @@ export class SafetyPolicy {
   }
 
   /**
-   * Validates layer payload invariants before profile import or memory acceptance.
+   * Validates layer payload invariants before acceptance.
    */
   public static assertLayerPayloadIntegrity(layerData: Uint8Array): void {
     if (layerData.length < 512) {
@@ -107,7 +175,6 @@ export class SafetyPolicy {
     }
 
     // Esc plausibility gate (slot 0)
-    // In stock AULA F75, Slot 0 byte 3 must equal 0x29 (Escape)
     if (layerData[0] !== 0 || layerData[3] !== DEFAULT_ESC_KEY_CODE) {
       throw new SafetyViolationError(
         `Plausibility check failed: Slot 0 does not contain an expected Escape key record (0x29).`,
@@ -125,9 +192,6 @@ export class SafetyPolicy {
     }
 
     // Slot 127 conservative integrity check (bytes 508..511):
-    // In some firmware variants/captures, slot 127 contains [0, 0, 0x5A, 0xA5],
-    // while in standard unpadded dumps it contains [0, 0, 0, 0].
-    // We treat slot 127 conservatively without inventing an artificial hardware invariant.
     const sentOffset = LAYER_SENTINEL_INDEX * 4;
     const sentByte2 = layerData[sentOffset + 2];
     const sentByte3 = layerData[sentOffset + 3];

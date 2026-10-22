@@ -2,7 +2,7 @@
 
 A community-developed, Linux-focused web configurator and diagnostic toolkit for the **AULA F75** 75% mechanical keyboard (VID `0x258A`, PID `0x010C`).
 
-This project is independently developed in [SHShellYeah/aula-control-center-web](https://github.com/SHShellYeah/aula-control-center-web), based upon the foundational work of [OpenAula](https://github.com/not-ayan/openaula) and enhanced with a safe in-memory simulator, versioned profile management, protocol validation, and guarded WebHID diagnostics.
+This project is independently developed in [SHShellYeah/aula-control-center-web](https://github.com/SHShellYeah/aula-control-center-web), based upon the foundational work of [OpenAula](https://github.com/not-ayan/openaula) and enhanced with a safe in-memory simulator, versioned profile management, protocol validation, and guarded WebHID read-only telemetry.
 
 ---
 
@@ -14,66 +14,65 @@ This project is independently developed in [SHShellYeah/aula-control-center-web]
 
 ---
 
-## Milestone 1: Simulator-Only Architecture
+## Operational Architecture & Hardware Boundaries
 
-In Milestone 1, our top priority is the absolute protection of the keyboard controller and flash memory:
-- **100% In-Memory Simulation (`SimulatorTransport`):** All layout inspection, virtual key remapping, modifier combos, RGB lighting previews, and profile workflows run entirely in browser RAM.
-- **Physical Hardware Connections Disabled:** Real USB communication (`requestDevice`, `getDevices`, `open`, `sendFeatureReport`, `sendReport`, `receiveFeatureReport`) is deliberately disabled in Milestone 1 to prevent any risk of hardware flash corruption or physical Fn lockout.
-- **Detailed Documentation:**
-  - Read [docs/SIMULATOR-ONLY-MODE.md](docs/SIMULATOR-ONLY-MODE.md) for full safety policies and protocol protection.
-  - Read [docs/PROFILES-SCHEMA.md](docs/PROFILES-SCHEMA.md) for profile schema v1 and atomic validation rules.
+The application enforces a strict operational separation between virtual simulation and guarded hardware access:
+
+```
+┌────────────────────────────────────────────────────────┐
+│                   AULA F75 Web App                     │
+├───────────────────────────┬────────────────────────────┤
+│   In-Memory Simulator     │  Guarded WebHID Read-Only  │
+│   (Default / 100% RAM)    │  (VID 0x258A: PID 0x010C)  │
+├───────────────────────────┼────────────────────────────┤
+│ • Virtual 1024-byte matrix│ • Explicit user click      │
+│ • Local JSON profiles     │ • Capability validation    │
+│ • Safe key remapping      │ • Mutex serialized I/O     │
+│ • Zero hardware risk      │ • Zero commands on connect │
+│                           │ • Only CMD 0x82 & 0x83     │
+│                           │ • All writes fail closed   │
+└───────────────────────────┴────────────────────────────┘
+```
+
+1. **Fully Functional Simulator Features (Default):**
+   - 100% in-memory virtual keyboard layout visualizer (75% ANSI, 80 keys + volume knob).
+   - Virtual key remapping, modifier combos (`Ctrl`, `Shift`, `Alt`, `Win`), and factory presets.
+   - Versioned profile manager (Schema v1) with atomic imports, JSON export, and storage corruption resilience.
+   - Virtual RGB preview across 15 lighting modes and 14 LED clusters.
+   - Absolutely zero physical USB interaction in simulator mode.
+
+2. **Implemented & Mock-Tested WebHID Read-Only Support:**
+   - **Target Hardware:** Strictly wired AULA F75 (`VID 0x258A, PID 0x010C`). Wireless 2.4GHz dongles (`0x3554:0xFA09`) and Bluetooth are rejected.
+   - **User Gesture Required:** Connection modal is opened only on explicit user click. Never connects automatically on page load or via polling.
+   - **Capability Verification:** Audits HID collection descriptors for vendor collection (`usagePage >= 0xFF00`) with Feature Report ID `6` prior to opening.
+   - **Zero Commands on Connect:** Selecting and opening the interface dispatches zero feature reports.
+   - **Approved Queries Only:**
+     - `CMD 0x82`: Device Identity Query (reads 14-byte ASCII model string; handles Linux `HIDIOCGFEATURE` short buffers).
+     - `CMD 0x83`: Keymap Layer 0 Readback (reads 512-byte Table 0; validates Esc, Fn, and slot 127 sentinel integrity).
+   - **Deferred Queries:** `CMD 0x84` (LED/sleep config) and `CMD 0x8A` (color/macro read) are deferred to protect microcontroller endpoints.
+   - **Transaction Mutex:** All feature report transmissions and receptions are serialized through a promise-based mutex.
+   - **State Isolation:** Hardware reads populate separate device telemetry state and never silently overwrite simulator profiles. An explicit "Import to Simulator" button allows safe virtual testing of readback keymaps.
+
+3. **Physical Reads Awaiting Manual Validation:**
+   - Real-hardware execution of `CMD 0x82` and `CMD 0x83` is implemented and verified against mocked WebHID transports, but awaits manual confirmation on individual physical keyboards across various factory firmware revisions.
+
+4. **Explicitly Unsupported Configuration Writes:**
+   - Keymap flashing (`0x03`), configuration writes (`0x04`), macro uploads (`0x05`), LED matrix flashing (`0x06`), live streaming (`0x08`), and factory resets (`0x11`) are **strictly blocked and fail closed**.
+
+Detailed specifications:
+- Read [docs/HARDWARE-READONLY-MODE.md](docs/HARDWARE-READONLY-MODE.md) for protocol details and manual testing instructions.
+- Read [docs/SIMULATOR-ONLY-MODE.md](docs/SIMULATOR-ONLY-MODE.md) for simulator architecture.
+- Read [docs/PROFILES-SCHEMA.md](docs/PROFILES-SCHEMA.md) for profile schema v1.
 
 ---
 
-## Current Capabilities
-
-The features below reflect the actual, implemented capabilities in the current source code:
-
-- **Browser-Based Modern Stack:** Built on React 19, TypeScript, Vite, and Tailwind CSS. Runs in modern browsers with zero backend or native daemon requirement.
-- **In-Memory Keyboard Simulator:**
-  - Interactive visualizer of the 80-key 75% ANSI layout.
-  - Complete mock RAM buffer maintaining matrix integrity.
-  - Test layouts, matrix inspections, and color schemes safely with zero hardware connected.
-- **Local Key Remapping Preview:**
-  - Inspect matrix indices and default HID keycodes.
-  - Preview single-key remaps and multi-modifier combos (`Ctrl`, `Shift`, `Alt`, `Win`).
-  - Simulated key remapping updates in RAM with visual indicators.
-- **Versioned Profile Management (Schema v1):**
-  - Create, duplicate, rename, and delete custom profiles.
-  - Built-in presets: *Factory Default ANSI*, *macOS Modifier Layout* (swapped Win/Alt), and *Gaming Lock Layout*.
-  - Export profiles as clean, portable JSON files.
-  - **Atomic Profile Import:** Strict multi-stage validation ensures corrupt or incompatible JSON files are rejected before touching simulator state.
-  - **Storage Resilience:** Gracefully catches corrupt localStorage data or quota exceptions and falls back to in-memory store.
-  - **State Clarity:** Transparently tracks and highlights unsaved edits against the saved profile.
-- **RGB Lighting Controls & Preview:**
-  - Preview 15 hardware lighting modes (Static, Breathing, Rainbow Wave, Aurora, Reactive, etc.).
-  - Adjust simulated speed (0–4) and brightness (1–4) levels.
-  - Select color presets across 14 simulated LED clusters.
-- **Continuous Integration (CI):**
-  - Fully automated GitHub Actions workflow (`.github/workflows/ci.yml`) executing dependency installation, tests, TypeScript type checking, linting, and production builds on every push and pull request.
-
-### Blocked & Disabled Operations
-
-To protect physical hardware from corruption or bricking, the following operations are **strictly blocked and fail closed**:
-- **Hardware Connection:** Real USB connections are disabled in Milestone 1.
-- **Hardware Configuration Writes:** Flashing modified keymaps to physical EEPROM/flash is blocked.
-- **Macro Uploads:** Writing arbitrary key sequences or macro scripts to hardware memory is disabled.
-- **Factory Resets:** Automated hardware resets and unverified repair routines are disabled.
-- **Arbitrary HID Packets:** Raw packet sending and non-allowlisted opcodes are rejected by the safety policy.
-
----
-
-## Safety Model & Hardware Notice
+## Safety Model & Residual Risk Notice
 
 > [!IMPORTANT]
-> **Safety Notice:** Passing automated unit tests does not equal verified physical hardware safety. Physical device queries are subject to ongoing real-device hardware validation across different firmware revisions. No claim of absolute zero risk on physical hardware is made.
-
-1. **Simulator Mode by Default:** On page load, the application always initializes in in-memory simulator mode (`SimulatorTransport`). No `navigator.hid` calls or USB requests occur automatically.
-2. **Resilience to Missing or Throwing `navigator.hid`:** If `navigator.hid` is undefined or throws an error (e.g. in restricted sandboxes or non-Chromium browsers), simulator workflows continue uninterrupted.
-3. **Critical Matrix Protection:**
-   - **Physical Fn Key (Matrix Index 53):** Guarded at the policy level to prevent overwriting the essential `[13, 0, 0, 0]` record that enables the keyboard's physical Fn layer.
-   - **Slot 127 Integrity Check:** Treated conservatively without inventing artificial invariants; accepts standard null padding (`[0, 0, 0, 0]`) and the disputed marker (`[0, 0, 0x5A, 0xA5]`).
-4. **Fail-Closed Policy:** Any command, opcode, or payload structure not explicitly present on the read-only query allowlist is immediately rejected before transmission.
+> **Safety Notice:** Passing automated offline unit tests does not equal verified physical hardware safety. Operating reverse-engineered software with physical hardware carries residual risks:
+> - Unexpected feature reports on 8051-based microcontrollers (e.g. Sinowealth SH68F90A) can trigger endpoint stall (`STALL_PID`) conditions requiring cable re-plugging.
+> - Concurrent execution of proprietary AULA software or third-party HID daemons may cause OS access conflicts.
+> - No claim of absolute zero risk on physical hardware is made.
 
 ---
 
@@ -88,7 +87,7 @@ npm ci
 # Start local development server with HMR
 npm run dev
 
-# Run automated test suite (Node.js test runner)
+# Run automated test suite (53 tests across 6 suites)
 npm test
 
 # Run TypeScript type check
@@ -101,6 +100,9 @@ npm run lint
 npm run build
 ```
 
+### Dependency Audit Note
+Running `npm audit` against `registry.npmjs.org` currently returns an HTTP 403 Forbidden registry policy response (`Request to POST /-/npm/v1/security/audits/quick on registry.npmjs.org not allowed by policy`). This limitation is tracked and handled non-blockingly in CI.
+
 ---
 
 ## Upstream Attribution & Community Provenance
@@ -109,21 +111,17 @@ AULA Control Center Web builds upon reverse-engineering research and open-source
 
 - **[OpenAula](https://github.com/not-ayan/openaula)** by [not-ayan](https://github.com/not-ayan):
   - Provided the original web UI concepts and reverse-engineered WebHID protocol mapping for the AULA F75.
-  - AULA Control Center Web builds on this foundation by adding a Linux-focused design, an isolated in-memory simulator, protocol safety policies, and guarded read-only WebHID diagnostics.
 - **[veysiemrah/aula-rgb-controller](https://github.com/veysiemrah/aula-rgb-controller)** by [Veysi Emrah](https://github.com/veysiemrah):
-  - Reverse-engineering research into the SinoWealth LED memory map, 21-byte hardware register gaps, and lighting packet structures.
+  - Reverse-engineering research into the SinoWealth LED memory map and packet structures.
 - **[OpenRGB](https://gitlab.com/rodrigost23/OpenRGB)** by [Rodrigo Tavares](https://gitlab.com/rodrigost23) and the OpenRGB project:
-  - Technical documentation on SinoWealth controller behavior and LED cluster addressing.
+  - Technical documentation on SinoWealth controller behavior.
 
 ### Licensing
 
-- Upstream OpenAula documented its release under the **MIT License** in its project README without an accompanying standalone root `LICENSE` file.
-- This repository provides an explicit [LICENSE](LICENSE) file under the **MIT License**, preserving upstream attribution while clarifying licensing for downstream users.
+This repository is distributed under the [MIT License](LICENSE).
 
 ---
 
 ## Disclaimer
 
 This is an independent community project. It is **not** affiliated with, endorsed by, or sponsored by AULA, Epomaker, SinoWealth, or any of their affiliates.
-
-The software is provided "as is", without warranty of any kind, express or implied. Operating reverse-engineered software with physical hardware is done at your own discretion.

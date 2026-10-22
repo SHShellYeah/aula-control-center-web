@@ -34,6 +34,7 @@ export function App() {
     records: new Map<number, KeyRecord>(),
     modifiedCount: 0,
     logs: ['[Init] AULA Control Center Web ready.', '[Safety] Running in 100% In-Memory Simulator mode.'],
+    deviceTelemetry: webhid.currentTelemetry,
   });
 
   // Initialize records from pristine matrix initially
@@ -89,6 +90,38 @@ export function App() {
     });
     return unsubscribe;
   }, []);
+
+  const handleConnect = async () => {
+    try {
+      await webhid.connect();
+    } catch (err: any) {
+      console.warn('Connect canceled or failed:', err.message);
+    }
+  };
+
+  const handleSwitchToSimulator = async () => {
+    await webhid.switchToSimulator();
+  };
+
+  const handleReadIdentity = async () => {
+    try {
+      await webhid.readDeviceIdentity();
+    } catch (err: any) {
+      console.warn('Device identity read failed:', err.message);
+    }
+  };
+
+  const handleReadKeymap = async () => {
+    try {
+      await webhid.readDeviceKeymap();
+    } catch (err: any) {
+      console.warn('Device keymap read failed:', err.message);
+    }
+  };
+
+  const handleImportDeviceKeymap = () => {
+    webhid.importDeviceKeymapToSimulator();
+  };
 
   const handleApplyProfileToSimulator = (profile: SimulatorProfile) => {
     try {
@@ -261,6 +294,8 @@ export function App() {
         isConnected={hidState.isConnected}
         deviceName={hidState.deviceName}
         mode={hidState.mode}
+        onConnect={handleConnect}
+        onSwitchToSimulator={handleSwitchToSimulator}
       />
 
       {/* Main Right Content Panel */}
@@ -283,6 +318,12 @@ export function App() {
                 activeProfileName={activeProfile.name}
                 keyboardElement={keyboardGridComponent}
                 onNavigateToProfiles={() => setActiveTab('profiles')}
+                onConnect={handleConnect}
+                onSwitchToSimulator={handleSwitchToSimulator}
+                onReadIdentity={handleReadIdentity}
+                onReadKeymap={handleReadKeymap}
+                onImportDeviceKeymap={handleImportDeviceKeymap}
+                deviceTelemetry={hidState.deviceTelemetry}
               />
 
               <LiveInputWidget records={hidState.records} />

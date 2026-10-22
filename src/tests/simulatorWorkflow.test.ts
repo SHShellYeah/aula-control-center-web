@@ -12,7 +12,7 @@ import {
 test('SimulatorWorkflow: operates completely in memory when navigator.hid is absent', () => {
   const originalHid = (globalThis.navigator as any)?.hid;
   try {
-    // Explicitly delete or set hid to undefined
+    // Explicitly set hid to undefined
     Object.defineProperty(globalThis.navigator, 'hid', {
       value: undefined,
       configurable: true,
@@ -89,12 +89,63 @@ test('SimulatorWorkflow: operates completely in memory even when navigator.hid t
   }
 });
 
-test('SimulatorWorkflow: webhid.connect() is disabled and fails closed in Milestone 1', async () => {
-  // connect() must return false without calling navigator.hid.requestDevice()
-  const connected = await webhid.connect();
-  assert.strictEqual(connected, false);
-  assert.strictEqual(webhid.activeMode, 'simulation');
-  assert.strictEqual(webhid.isSimulated, true);
+test('SimulatorWorkflow: webhid.connect() fails closed when WebHID API is absent', async () => {
+  const originalHid = (globalThis.navigator as any)?.hid;
+  try {
+    Object.defineProperty(globalThis.navigator, 'hid', {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
+
+    await assert.rejects(
+      async () => {
+        await webhid.connect();
+      },
+      /WebHID API is not supported/
+    );
+
+    assert.strictEqual(webhid.activeMode, 'simulation');
+    assert.strictEqual(webhid.isSimulated, true);
+  } finally {
+    if (originalHid !== undefined) {
+      Object.defineProperty(globalThis.navigator, 'hid', {
+        value: originalHid,
+        configurable: true,
+        writable: true,
+      });
+    } else {
+      delete (globalThis.navigator as any).hid;
+    }
+  }
+});
+
+test('SimulatorWorkflow: webhid.connect() returns false when user cancels chooser', async () => {
+  const originalHid = (globalThis.navigator as any)?.hid;
+  try {
+    Object.defineProperty(globalThis.navigator, 'hid', {
+      value: {
+        requestDevice: async () => [], // User canceled
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    const connected = await webhid.connect();
+    assert.strictEqual(connected, false);
+    assert.strictEqual(webhid.activeMode, 'simulation');
+    assert.strictEqual(webhid.isSimulated, true);
+  } finally {
+    if (originalHid !== undefined) {
+      Object.defineProperty(globalThis.navigator, 'hid', {
+        value: originalHid,
+        configurable: true,
+        writable: true,
+      });
+    } else {
+      delete (globalThis.navigator as any).hid;
+    }
+  }
 });
 
 test('SimulatorWorkflow: unknown and mutating hardware commands remain blocked fail-closed', () => {

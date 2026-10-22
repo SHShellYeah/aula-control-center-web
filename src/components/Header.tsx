@@ -13,6 +13,8 @@ export const Header: React.FC<HeaderProps> = ({
   activeProfileName,
   hasUnsavedChanges = false,
 }) => {
+  const isHardware = mode === 'webhid-readonly';
+
   return (
     <header className="px-10 pt-8 pb-6 flex items-start justify-between bg-[#0a0a0a]">
       <div className="space-y-1">
@@ -39,16 +41,22 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         )}
 
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#141414] border border-[#222222]">
+        <div
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${
+            isHardware
+              ? 'bg-emerald-950/30 border-emerald-800/50 text-emerald-300'
+              : 'bg-[#141414] border-[#222222] text-zinc-300'
+          }`}
+        >
           <div
             className={`w-2 h-2 rounded-full ${
-              mode === 'webhid-readonly'
+              isHardware
                 ? 'bg-emerald-400 shadow-[0_0_8px_#22c55e]'
                 : 'bg-cyan-400 shadow-[0_0_8px_#06b6d4]'
             }`}
           />
-          <span className="text-xs font-semibold text-zinc-300 font-mono">
-            {mode === 'webhid-readonly' ? 'WebHID Read-Only' : 'Simulator Mode (RAM)'}
+          <span className="text-xs font-semibold font-mono">
+            {isHardware ? 'Hardware Read-Only (0x258A:0x010C)' : 'Simulator Mode (RAM)'}
           </span>
         </div>
       </div>
