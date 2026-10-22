@@ -1,5 +1,6 @@
 {
-  "name": "aula-f75-web",
+  "name": "aula-control-center-web",
+  "description": "Linux-focused AULA F75 web configurator with safe simulator, protocol validation and guarded WebHID diagnostics.",
   "private": true,
   "version": "0.0.0",
   "type": "module",
