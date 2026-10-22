@@ -3,14 +3,17 @@ import React from 'react';
 interface OverviewProps {
   isConnected: boolean;
   modifiedCount: number;
+  mode?: 'simulation' | 'webhid-readonly';
   onConnect: () => void;
+  onSwitchToSimulator?: () => void;
   keyboardElement: React.ReactNode;
 }
 
 export const Overview: React.FC<OverviewProps> = ({
-  isConnected,
   modifiedCount,
+  mode = 'simulation',
   onConnect,
+  onSwitchToSimulator,
   keyboardElement,
 }) => {
   return (
@@ -31,12 +34,19 @@ export const Overview: React.FC<OverviewProps> = ({
               HARDWARE MATRIX VIEW
             </span>
 
-            {!isConnected && (
+            {mode === 'simulation' ? (
               <button
                 onClick={onConnect}
                 className="px-3.5 py-1.5 rounded-lg bg-white hover:bg-zinc-200 text-black font-bold text-xs transition-all shadow-md"
               >
-                Connect HID
+                Connect Real HID
+              </button>
+            ) : (
+              <button
+                onClick={onSwitchToSimulator}
+                className="px-3.5 py-1.5 rounded-lg bg-cyan-950/40 hover:bg-cyan-900/50 text-cyan-300 font-bold text-xs border border-cyan-500/30 transition-all shadow-md"
+              >
+                Return to Simulator
               </button>
             )}
           </div>
@@ -83,10 +93,10 @@ export const Overview: React.FC<OverviewProps> = ({
               CONNECTION
             </div>
             <div className="text-xl font-extrabold text-white">
-              {isConnected ? 'Wired USB' : 'Disconnected'}
+              {mode === 'webhid-readonly' ? 'Wired USB (Read-Only)' : 'In-Memory Simulator'}
             </div>
             <div className="text-[11px] text-zinc-500 font-mono">
-              {isConnected ? 'VID 0x258A : PID 0x010C' : 'Click Connect to attach WebHID'}
+              {mode === 'webhid-readonly' ? 'VID 0x258A : PID 0x010C (Telemetry Active)' : '100% RAM Virtual Device (Zero Hardware Risk)'}
             </div>
           </div>
         </div>

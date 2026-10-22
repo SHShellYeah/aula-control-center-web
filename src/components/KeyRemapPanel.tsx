@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { ShieldAlert, Lock } from 'lucide-react';
+import { webhid } from '../services/webhid';
 import {
   AULA_F75_LAYOUT,
   HID_USAGES,
@@ -106,6 +108,11 @@ export const KeyRemapPanel: React.FC<KeyRemapPanelProps> = ({
   const originalUsage = record ? record.originalUsage : 0;
   const isModified = record ? record.bytes.join(',') !== [0, 0, 0, originalUsage].join(',') && currentUsage !== originalUsage : false;
 
+  const isFnKey = selectedMatrixIdx === 53;
+  const isSentinelKey = selectedMatrixIdx === 127;
+  const isProtectedKey = isFnKey || isSentinelKey;
+  const isReadOnlyHardware = webhid.activeMode === 'webhid-readonly';
+
   const categories = ['Standard', 'Modifiers', 'Function', 'Navigation', 'Media', 'Special'];
 
   const filteredUsages = HID_USAGES.filter((u) => {
@@ -129,17 +136,41 @@ export const KeyRemapPanel: React.FC<KeyRemapPanelProps> = ({
   };
 
   const handleApplySingle = () => {
+    if (isProtectedKey) {
+      alert(`Matrix Index #${selectedMatrixIdx} is hardware-protected and cannot be remapped.`);
+      return;
+    }
+    if (isReadOnlyHardware) {
+      alert('Hardware writes are disabled in Read-Only Hardware mode. Switch to Simulator to test custom keymaps.');
+      return;
+    }
     if (selectedUsage !== null) {
       onApplyRemap(selectedMatrixIdx, selectedUsage);
     }
   };
 
   const handleApplyShortcut = () => {
+    if (isProtectedKey) {
+      alert(`Matrix Index #${selectedMatrixIdx} is hardware-protected and cannot be remapped.`);
+      return;
+    }
+    if (isReadOnlyHardware) {
+      alert('Hardware writes are disabled in Read-Only Hardware mode. Switch to Simulator to test custom keymaps.');
+      return;
+    }
     const rawBytes = encodeComboBytes(getModBitmask(), shortcutKeyUsage);
     onApplyComboRemap(selectedMatrixIdx, rawBytes);
   };
 
   const handleApplyPreset = (modifiers: number, key: number) => {
+    if (isProtectedKey) {
+      alert(`Matrix Index #${selectedMatrixIdx} is hardware-protected and cannot be remapped.`);
+      return;
+    }
+    if (isReadOnlyHardware) {
+      alert('Hardware writes are disabled in Read-Only Hardware mode. Switch to Simulator to test custom keymaps.');
+      return;
+    }
     const rawBytes = encodeComboBytes(modifiers, key);
     onApplyComboRemap(selectedMatrixIdx, rawBytes);
   };
@@ -168,7 +199,7 @@ export const KeyRemapPanel: React.FC<KeyRemapPanelProps> = ({
             <span className="text-zinc-500">|</span>
             <span className="text-cyan-400 font-bold">{currentLabel}</span>
           </div>
-          {isModified && (
+          {isModified && !isProtectedKey && !isReadOnlyHardware && (
             <button
               onClick={() => onResetKey(selectedMatrixIdx)}
               className="text-xs text-rose-400 hover:text-rose-300 font-mono font-semibold"
@@ -176,7 +207,7 @@ export const KeyRemapPanel: React.FC<KeyRemapPanelProps> = ({
               Reset Key
             </button>
           )}
-          {onResetAll && (
+          {onResetAll && !isReadOnlyHardware && (
             <button
               onClick={onResetAll}
               className="text-xs text-zinc-400 hover:text-white font-mono font-medium px-2 py-1 rounded bg-[#181818] border border-[#2a2a2a] hover:border-[#383838] transition-all"
@@ -186,6 +217,47 @@ export const KeyRemapPanel: React.FC<KeyRemapPanelProps> = ({
           )}
         </div>
       </div>
+
+      {/* Safety Policy Alerts */}
+      {isFnKey && (
+        <div className="bg-amber-950/30 border border-amber-500/40 rounded-xl p-4 flex items-start gap-3">
+          <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-xs space-y-1">
+            <div className="font-bold text-amber-300 flex items-center gap-1.5">
+              <Lock className="w-3.5 h-3.5" /> PHYSICAL FN KEY PROTECTED (Matrix #53)
+            </div>
+            <p className="text-zinc-300 leading-relaxed">
+              The physical Fn key at Matrix Index 53 is hardware-locked to value <span className="font-mono text-white">[13, 0, 0, 0]</span>. Remapping this key is permanently blocked by safety policy to preserve hardware layer switching and secondary shortcuts.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {isSentinelKey && (
+        <div className="bg-rose-950/30 border border-rose-500/40 rounded-xl p-4 flex items-start gap-3">
+          <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+          <div className="text-xs space-y-1">
+            <div className="font-bold text-rose-300 flex items-center gap-1.5">
+              <Lock className="w-3.5 h-3.5" /> HARDWARE SENTINEL SLOT PROTECTED (Matrix #127)
+            </div>
+            <p className="text-zinc-300 leading-relaxed">
+              Matrix Index 127 holds hardware sentinel bytes <span className="font-mono text-white">[0, 0, 0x5A, 0xA5]</span> required for EEPROM table validation. Remapping this slot is permanently blocked.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {isReadOnlyHardware && !isProtectedKey && (
+        <div className="bg-cyan-950/20 border border-cyan-500/30 rounded-xl p-3.5 flex items-start gap-3">
+          <ShieldAlert className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+          <div className="text-xs space-y-0.5">
+            <div className="font-semibold text-cyan-300">Read-Only Hardware Diagnostics Active</div>
+            <p className="text-zinc-400">
+              Hardware keymap writes to physical flash memory are disabled to safeguard keyboard firmware. To test and customize key bindings safely, switch to In-Memory Simulator mode.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Mode Switcher Tabs */}
       <div className="flex items-center gap-2 border-b border-[#1c1c1c] pb-3">
@@ -279,10 +351,10 @@ export const KeyRemapPanel: React.FC<KeyRemapPanelProps> = ({
 
             <button
               onClick={handleApplySingle}
-              disabled={selectedUsage === null || selectedUsage === currentUsage}
+              disabled={isProtectedKey || isReadOnlyHardware || selectedUsage === null || selectedUsage === currentUsage}
               className="bg-white hover:bg-zinc-200 text-black font-bold px-6 py-2.5 rounded-lg text-xs disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-md"
             >
-              Apply Key Remap
+              {isProtectedKey ? 'Protected Key' : isReadOnlyHardware ? 'Writes Disabled (Read-Only)' : 'Apply Key Remap'}
             </button>
           </div>
         </div>
@@ -372,9 +444,10 @@ export const KeyRemapPanel: React.FC<KeyRemapPanelProps> = ({
 
             <button
               onClick={handleApplyShortcut}
-              className="bg-cyan-400 hover:bg-cyan-300 text-black font-bold px-6 py-2.5 rounded-lg text-xs transition-all shadow-lg shadow-cyan-500/20"
+              disabled={isProtectedKey || isReadOnlyHardware}
+              className="bg-cyan-400 hover:bg-cyan-300 text-black font-bold px-6 py-2.5 rounded-lg text-xs disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-lg shadow-cyan-500/20"
             >
-              Apply Combo Shortcut
+              {isProtectedKey ? 'Protected Key' : isReadOnlyHardware ? 'Writes Disabled (Read-Only)' : 'Apply Combo Shortcut'}
             </button>
           </div>
         </div>
@@ -392,8 +465,9 @@ export const KeyRemapPanel: React.FC<KeyRemapPanelProps> = ({
             {SHORTCUT_PRESETS.map((preset) => (
               <button
                 key={preset.label}
+                disabled={isProtectedKey || isReadOnlyHardware}
                 onClick={() => handleApplyPreset(preset.modifiers, preset.key)}
-                className="p-3 bg-[#161616] border border-[#242424] hover:border-cyan-500/60 hover:bg-[#1e1e1e] rounded-xl text-left transition-all flex flex-col justify-between group"
+                className="p-3 bg-[#161616] border border-[#242424] hover:border-cyan-500/60 hover:bg-[#1e1e1e] disabled:opacity-30 disabled:cursor-not-allowed rounded-xl text-left transition-all flex flex-col justify-between group"
               >
                 <div className="text-xs font-bold text-white group-hover:text-cyan-400 transition-colors">
                   {preset.label}

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { webhid, type DiffEntry } from '../services/webhid';
+import { SafetyPolicy } from '../safety/SafetyPolicy';
 
 interface BackupPanelProps {
   matrixData: Uint8Array | null;
@@ -51,10 +52,16 @@ export const BackupPanel: React.FC<BackupPanelProps> = ({ matrixData, onRefresh 
 
   // 2. Surgical Fn Recovery (Modifies ONLY Fn record 53 = [13, 0, 0, 0])
   const handleSurgicalFnRecovery = async () => {
-    if (confirm('Surgically restore ONLY Fn record (matrix 53 = 13 00 00 00)? This preserves current OS mode and configuration untouched.')) {
+    if (webhid.activeMode === 'webhid-readonly') {
+      alert('Hardware writes are disabled in Read-Only Hardware mode to protect keyboard flash. Switch to Simulator to test Fn recovery.');
+      setBackupStatus('Hardware writes disabled in Read-Only mode.');
+      return;
+    }
+
+    if (confirm('Surgically restore ONLY Fn record (matrix 53 = 13 00 00 00) in virtual memory?')) {
       const success = await webhid.surgicalFnRecovery();
       if (success) {
-        setBackupStatus('SURGICAL FN RECOVERY COMPLETE: Fn key restored while keeping OS mode untouched.');
+        setBackupStatus('SURGICAL FN RECOVERY COMPLETE: Fn key restored in RAM while keeping OS mode untouched.');
         onRefresh();
       }
     }
@@ -70,21 +77,35 @@ export const BackupPanel: React.FC<BackupPanelProps> = ({ matrixData, onRefresh 
   // 4. Restore Full Raw Dump (Advanced / Dangerous)
   const handleRestoreFullRaw = async () => {
     if (!selectedFile) return;
-    if (!confirm('⛔ WARNING: Restoring full 1024-byte raw configuration may overwrite OS mode or secondary tables. Proceed?')) return;
+
+    if (webhid.activeMode === 'webhid-readonly') {
+      alert('Hardware keymap flashing is disabled by the WebHID Safety Policy to protect keyboard flash memory. Switch to In-Memory Simulator Mode to load and inspect this profile safely.');
+      setBackupStatus('Hardware flashing blocked: Switch to Simulator to load profile.');
+      return;
+    }
+
+    if (!confirm('Load 1024-byte configuration profile into Simulator RAM?')) return;
 
     try {
       const text = await selectedFile.text();
       const obj = JSON.parse(text);
       if (!Array.isArray(obj.matrix1024) || obj.matrix1024.length !== 1024) {
-        throw new Error('Invalid AULA F75 backup JSON file format');
+        throw new Error('Invalid AULA F75 backup JSON file format (expected 1024-element matrix array)');
       }
 
-      setBackupStatus(`Restoring raw 1024-byte dump from ${selectedFile.name}...`);
-      webhid.log(`Restoring full raw configuration: ${selectedFile.name}`);
+      setBackupStatus(`Validating profile integrity for ${selectedFile.name}...`);
+      const layer0 = new Uint8Array(obj.matrix1024.slice(0, 512));
+
+      // Strictly validate invariants before applying
+      SafetyPolicy.assertLayerPayloadIntegrity(layer0);
+
+      await webhid.writeBaseTable(layer0);
       onRefresh();
-      setBackupStatus(`Full raw dump restored: ${selectedFile.name}`);
+      setBackupStatus(`✓ Profile successfully validated and loaded into Simulator RAM from ${selectedFile.name}`);
+      webhid.log(`[Backup] Successfully loaded validated profile: ${selectedFile.name}`);
     } catch (err: any) {
       setBackupStatus(`Restore Error: ${err.message}`);
+      alert(`Profile Validation Error: ${err.message}`);
     }
   };
 

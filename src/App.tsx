@@ -18,16 +18,18 @@ export function App() {
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [selectedMatrixIdx, setSelectedMatrixIdx] = useState<number | null>(9); // Default select 'A' (matrix 9)
   
-  // State from webhid service
+  // State from webhid service (defaulted to safe In-Memory Simulator)
   const [hidState, setHidState] = useState<WebHIDState>({
-    isConnected: false,
-    deviceName: 'AULA F75',
+    isConnected: true,
+    isSimulated: true,
+    mode: 'simulation',
+    deviceName: 'AULA F75 (Simulator)',
     vendorId: '0x258A',
     productId: '0x010C',
     matrixData: new Uint8Array([...PRISTINE_STAGE5_MATRIX[0], ...PRISTINE_STAGE5_MATRIX[1]]),
     records: new Map<number, KeyRecord>(),
     modifiedCount: 0,
-    logs: ['[Init] AULA F75 WebHID Configurator ready.'],
+    logs: ['[Init] AULA F75 WebHID Configurator ready.', '[Safety] Defaulted to In-Memory Simulator (RAM Mode).'],
   });
 
   // Initialize records from pristine matrix initially
@@ -74,6 +76,10 @@ export function App() {
       inputManager.attachWebHIDDevice((webhid as any).device);
       rgbService.attachDevice((webhid as any).device);
     }
+  };
+
+  const handleSwitchToSimulator = async () => {
+    await webhid.switchToSimulator();
   };
 
   const handleApplyRemap = async (matrixIdx: number, newUsage: number) => {
@@ -169,12 +175,18 @@ export function App() {
         setActiveTab={setActiveTab}
         isConnected={hidState.isConnected}
         deviceName={hidState.deviceName}
+        mode={hidState.mode}
         onConnect={handleConnect}
+        onSwitchToSimulator={handleSwitchToSimulator}
       />
 
       {/* Main Right Content Panel */}
       <div className="flex-1 flex flex-col min-w-0">
-        <Header isConnected={hidState.isConnected} modifiedCount={hidState.modifiedCount} />
+        <Header
+          isConnected={hidState.isConnected}
+          modifiedCount={hidState.modifiedCount}
+          mode={hidState.mode}
+        />
 
         <main className="flex-1 px-10 pb-10 space-y-6 overflow-y-auto">
           {activeTab === 'overview' && (
@@ -182,7 +194,9 @@ export function App() {
               <Overview
                 isConnected={hidState.isConnected}
                 modifiedCount={hidState.modifiedCount}
+                mode={hidState.mode}
                 onConnect={handleConnect}
+                onSwitchToSimulator={handleSwitchToSimulator}
                 keyboardElement={keyboardGridComponent}
               />
 

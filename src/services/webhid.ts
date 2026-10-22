@@ -1,7 +1,23 @@
-import { parseKeyRecordUsage, encodeKeyRecordBytes, type KeyRecord } from '../types/hid';
+// ============================================================================
+// Guarded WebHID Controller & Hardware Safety Gatekeeper
+// Strict Fail-Closed Safety: Simulator Default & Read-Only Hardware Telemetry
+// ============================================================================
+
+import { parseKeyRecordUsage, type KeyRecord } from '../types/hid.ts';
+import { PRISTINE_STAGE5_MATRIX } from './pristineMatrix.ts';
+export { PRISTINE_STAGE5_MATRIX };
+import {
+  SafetyPolicy,
+  SafetyViolationError,
+  APPROVED_READ_OPCODES,
+  PHYSICAL_FN_MATRIX_INDEX,
+} from '../safety/SafetyPolicy.ts';
+import { SimulatorTransport } from './simulatorTransport.ts';
 
 export interface WebHIDState {
   isConnected: boolean;
+  isSimulated: boolean;
+  mode: 'simulation' | 'webhid-readonly';
   deviceName: string;
   vendorId: string;
   productId: string;
@@ -11,11 +27,6 @@ export interface WebHIDState {
   logs: string[];
 }
 
-export const PRISTINE_STAGE5_MATRIX: [number[], number[]] = [
-  [0, 0, 0, 41, 0, 0, 0, 53, 0, 0, 0, 43, 0, 0, 0, 57, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 20, 0, 0, 0, 4, 0, 0, 0, 29, 0, 8, 0, 0, 0, 0, 0, 58, 0, 0, 0, 31, 0, 0, 0, 26, 0, 0, 0, 22, 0, 0, 0, 27, 0, 4, 0, 0, 0, 0, 0, 59, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 33, 0, 0, 0, 21, 0, 0, 0, 9, 0, 0, 0, 25, 0, 0, 0, 0, 0, 0, 0, 61, 0, 0, 0, 34, 0, 0, 0, 23, 0, 0, 0, 10, 0, 0, 0, 5, 0, 0, 0, 44, 0, 0, 0, 62, 0, 0, 0, 35, 0, 0, 0, 28, 0, 0, 0, 11, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 63, 0, 0, 0, 36, 0, 0, 0, 24, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 37, 0, 0, 0, 12, 0, 0, 0, 14, 0, 0, 0, 54, 13, 0, 0, 0, 0, 0, 0, 65, 0, 0, 0, 38, 0, 0, 0, 18, 0, 0, 0, 15, 0, 0, 0, 55, 0, 16, 0, 0, 0, 0, 0, 66, 0, 0, 0, 39, 0, 0, 0, 19, 0, 0, 0, 51, 0, 0, 0, 56, 0, 0, 0, 0, 0, 0, 0, 67, 0, 0, 0, 45, 0, 0, 0, 47, 0, 0, 0, 52, 0, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 68, 0, 0, 0, 46, 0, 0, 0, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 80, 0, 0, 0, 70, 0, 0, 0, 42, 0, 0, 0, 49, 0, 0, 0, 40, 0, 0, 0, 82, 0, 0, 0, 81, 7, 0, 0, 29, 0, 0, 0, 76, 0, 0, 0, 75, 0, 0, 0, 78, 0, 0, 0, 77, 0, 0, 0, 79, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 90, 165],
-  [0, 0, 0, 41, 0, 0, 0, 53, 0, 0, 0, 43, 0, 0, 0, 57, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 20, 0, 0, 0, 4, 0, 0, 0, 29, 0, 4, 0, 0, 2, 0, 0, 112, 0, 0, 0, 31, 0, 0, 0, 26, 0, 0, 0, 22, 0, 0, 0, 27, 0, 8, 0, 0, 2, 0, 0, 111, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 6, 0, 0, 0, 0, 0, 8, 0, 43, 0, 0, 0, 33, 0, 0, 0, 21, 0, 0, 0, 9, 0, 0, 0, 25, 0, 0, 0, 0, 0, 8, 0, 11, 0, 0, 0, 34, 0, 0, 0, 23, 0, 0, 0, 10, 0, 0, 0, 5, 0, 0, 0, 44, 8, 3, 2, 0, 0, 0, 0, 35, 0, 0, 0, 28, 0, 0, 0, 11, 0, 0, 0, 17, 0, 0, 0, 0, 8, 3, 1, 0, 0, 0, 0, 36, 0, 0, 0, 24, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 2, 0, 0, 182, 0, 0, 0, 37, 0, 0, 0, 12, 0, 0, 0, 14, 0, 0, 0, 54, 13, 0, 0, 0, 2, 0, 0, 205, 0, 0, 0, 38, 0, 0, 0, 18, 0, 0, 0, 15, 0, 0, 0, 55, 0, 16, 0, 0, 2, 0, 0, 181, 0, 0, 0, 39, 0, 0, 0, 19, 0, 0, 0, 51, 0, 0, 0, 56, 0, 0, 0, 0, 2, 0, 0, 226, 0, 0, 0, 45, 0, 0, 0, 47, 0, 0, 0, 52, 0, 32, 0, 0, 0, 0, 0, 0, 2, 0, 0, 234, 0, 0, 0, 46, 0, 0, 0, 48, 0, 0, 0, 50, 0, 0, 0, 100, 0, 0, 0, 80, 2, 0, 0, 233, 0, 0, 0, 42, 0, 0, 0, 49, 0, 0, 0, 40, 0, 0, 0, 82, 0, 0, 0, 81, 7, 0, 0, 29, 0, 0, 0, 76, 0, 0, 0, 75, 0, 0, 0, 78, 0, 0, 0, 77, 0, 0, 0, 79, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 90, 165]
-];
-
 export interface DiffEntry {
   offsetHex: string;
   offsetDec: number;
@@ -24,13 +35,50 @@ export interface DiffEntry {
   notes: string;
 }
 
+export interface InterfaceDiagnostic {
+  collectionIndex: number;
+  usagePage: number;
+  usage: number;
+  inputReportsCount: number;
+  outputReportsCount: number;
+  featureReportsCount: number;
+  reportIds: number[];
+  isVendorCollection: boolean;
+  isProtectedKeyboard: boolean;
+  clearanceStatus: 'safe_vendor_pipe' | 'blocked_protected_usage' | 'unrecognized';
+}
+
 class WebHIDController {
   private device: any = null;
+  private simulator: SimulatorTransport;
+  private mode: 'simulation' | 'webhid-readonly' = 'simulation';
   private listeners: ((state: Partial<WebHIDState>) => void)[] = [];
   private logs: string[] = [];
-  private connectedBaseline: Uint8Array | null = null; // First read = baseline (no false positives)
+  private connectedBaseline: Uint8Array | null = null;
+  private disconnectHandler: ((ev: any) => void) | null = null;
 
-  public log(msg: string) {
+  constructor() {
+    this.simulator = new SimulatorTransport();
+  }
+
+  public get activeMode(): 'simulation' | 'webhid-readonly' {
+    return this.mode;
+  }
+
+  public get activeSimulator(): SimulatorTransport {
+    return this.simulator;
+  }
+
+  public get isConnected(): boolean {
+    if (this.mode === 'simulation') return true;
+    return this.device !== null && this.device.opened;
+  }
+
+  public get isSimulated(): boolean {
+    return this.mode === 'simulation';
+  }
+
+  public log(msg: string): void {
     const timestamp = new Date().toLocaleTimeString();
     const logLine = `[${timestamp}] ${msg}`;
     this.logs.push(logLine);
@@ -38,140 +86,214 @@ class WebHIDController {
     this.notify({ logs: [...this.logs] });
   }
 
-  public subscribe(fn: (state: Partial<WebHIDState>) => void) {
+  public subscribe(fn: (state: Partial<WebHIDState>) => void): () => void {
     this.listeners.push(fn);
     return () => {
       this.listeners = this.listeners.filter(l => l !== fn);
     };
   }
 
-  private notify(state: Partial<WebHIDState>) {
+  private notify(state: Partial<WebHIDState>): void {
     this.listeners.forEach(fn => fn(state));
   }
 
+  public static isSupported(): boolean {
+    return typeof navigator !== 'undefined' && 'hid' in navigator;
+  }
+
+  /**
+   * Switches to 100% In-Memory Simulation Mode.
+   * GUARANTEE: Never touches hardware or navigator.hid.
+   */
+  public async switchToSimulator(): Promise<void> {
+    if (this.device && this.device.opened) {
+      try {
+        await this.device.close();
+      } catch (e) {
+        console.warn('Error closing device during switch to simulator:', e);
+      }
+    }
+    this.device = null;
+    this.mode = 'simulation';
+    this.connectedBaseline = null;
+    this.log('Switched to In-Memory Simulator Mode (RAM). Zero hardware I/O.');
+
+    this.notify({
+      isConnected: true,
+      isSimulated: true,
+      mode: 'simulation',
+      deviceName: 'AULA F75 (Simulator)',
+      vendorId: '0x258A',
+      productId: '0x010C',
+    });
+
+    await this.readMatrixData();
+  }
+
+  /**
+   * Connects to Physical Hardware in STRICT READ-ONLY MODE.
+   * Must be called from a user gesture (button click).
+   */
   public async connect(): Promise<boolean> {
+    if (!WebHIDController.isSupported()) {
+      this.log('WebHID is not supported in this browser. Please use Chrome, Edge, or Brave.');
+      alert('WebHID is not supported in this browser. Please use a Chromium-based browser (Chrome, Edge, Brave).');
+      return false;
+    }
+
     try {
       const hidNav = (navigator as any).hid;
-      if (!hidNav) {
-        throw new Error('WebHID is not supported in this browser. Use Chrome, Edge, or Brave.');
+      this.log('Requesting WebHID device chooser (VID: 0x258A, PID: 0x010C)...');
+
+      // Request device with strict hardware filters
+      const devices = await hidNav.requestDevice({
+        filters: [
+          { vendorId: 0x258A, productId: 0x010C }, // Wired USB-C
+          { vendorId: 0x3554, productId: 0xFA09 }, // 2.4G Wireless Dongle
+        ],
+      });
+
+      if (!devices || devices.length === 0) {
+        this.log('Device selection cancelled by user in browser chooser.');
+        return false;
       }
 
-      this.log('Checking existing authorized HID devices...');
-      let existing = await hidNav.getDevices();
-      let matched = existing.find((d: any) => d.vendorId === 0x258A && d.productId === 0x010C);
+      const selected = devices[0];
+      this.validateDeviceChooserSelection(selected);
 
-      if (!matched) {
-        this.log('Requesting HID device picker (VID: 0x258A, PID: 0x010C)...');
-        const devices = await hidNav.requestDevice({
-          filters: [{ vendorId: 0x258A, productId: 0x010C }]
-        });
+      // Warning if wireless dongle is chosen
+      if (selected.vendorId === 0x3554) {
+        this.log('⚠ NOTICE: 2.4GHz wireless receiver connected. Wireless framing requires 20-byte reports.');
+      }
 
-        if (!devices || devices.length === 0) {
-          this.log('No device selected by user in picker.');
-          return false;
+      if (!selected.opened) {
+        this.log('Opening WebHID interface in read-only mode...');
+        await selected.open();
+      }
+
+      this.device = selected;
+      this.mode = 'webhid-readonly';
+
+      // Register disconnect listener
+      this.disconnectHandler = (ev: any) => {
+        if (ev.device === this.device) {
+          this.log('Hardware device physically disconnected. Returning to simulator.');
+          this.switchToSimulator();
         }
-        matched = devices[0];
+      };
+      if ('addEventListener' in hidNav) {
+        hidNav.addEventListener('disconnect', this.disconnectHandler);
       }
 
-      const allDevices = await hidNav.getDevices();
-      const targetDevs = allDevices.filter((d: any) => d.vendorId === 0x258A && d.productId === 0x010C);
-      
-      this.device = targetDevs.find((d: any) => 
-        (d.collections || []).some((c: any) => 
-          (c.featureReports || []).some((r: any) => r.reportId === 6)
-        )
-      ) || matched || targetDevs[0];
+      this.log(`Successfully opened ${this.device.productName || 'AULA F75'} (Hardware Read-Only Diagnostics Active)`);
 
-      if (!this.device) {
-        throw new Error('No valid AULA F75 device found.');
-      }
-
-      if (!this.device.opened) {
-        this.log('Opening WebHID interface...');
-        await this.device.open();
-      }
-
-      this.log(`Successfully opened ${this.device.productName || 'AULA F75 Mechanical Keyboard'}`);
-      
       this.notify({
         isConnected: true,
+        isSimulated: false,
+        mode: 'webhid-readonly',
         deviceName: this.device.productName || 'AULA F75',
-        vendorId: '0x258A',
-        productId: '0x010C'
+        vendorId: `0x${this.device.vendorId.toString(16).toUpperCase()}`,
+        productId: `0x${this.device.productId.toString(16).toUpperCase()}`,
       });
 
       await this.readMatrixData();
       return true;
     } catch (err: any) {
       this.log(`Connection error: ${err.message}`);
-      alert(`Connection failed: ${err.message}\n\nTips:\n1. Close official AULA software if running.\n2. Ensure keyboard is connected via USB cable.\n3. Re-plug USB cable and try again.`);
       return false;
     }
   }
 
-  // Exact v1.2 readBase implementation (512 bytes)
+  public validateDeviceChooserSelection(dev: any): void {
+    const isWired = dev.vendorId === 0x258A && dev.productId === 0x010C;
+    const isWireless = dev.vendorId === 0x3554 && dev.productId === 0xFA09;
+    if (!isWired && !isWireless) {
+      throw new SafetyViolationError(
+        `Selected device (VID 0x${dev.vendorId.toString(16)}, PID 0x${dev.productId.toString(16)}) is not an approved AULA keyboard.`,
+        'DEVICE_VALIDATION_FAILED'
+      );
+    }
+  }
+
+  /**
+   * Reads 512-byte Table 0 base keymap table.
+   * Safe non-mutating query (CMD 0x83).
+   */
   public async readBaseTable(): Promise<Uint8Array> {
+    if (this.mode === 'simulation') {
+      return this.simulator.readBaseTable();
+    }
+
     if (!this.device || !this.device.opened) {
       throw new Error('Device not connected');
     }
 
-    const query = new Uint8Array(519);
-    query[0] = 0x83;
-    query[1] = 0;
-    query[2] = 0;
-    query[3] = 1; // 1 packet (Table 0 Base Table)
-    query[4] = 0; // Packet Index 0
-    query[5] = 0;
-    query[6] = 2; // 512 bytes
+    // Gatekeeper enforcement
+    SafetyPolicy.assertCommandAllowed(APPROVED_READ_OPCODES.KEYMAP_READ);
 
+    const query = new Uint8Array(519);
+    query[0] = APPROVED_READ_OPCODES.KEYMAP_READ; // 0x83
+    query[1] = 0; // Layer 0
+    query[2] = 0;
+    query[3] = 1; // Total packets: 1
+    query[4] = 0; // Packet index: 0
+    query[5] = 0;
+    query[6] = 2; // Length: 512 bytes (0x0200)
+
+    this.log('[WebHID] Dispatching approved read query: CMD 0x83 (Keymap Layer 0)...');
     await this.device.sendFeatureReport(6, query);
-    await new Promise(r => setTimeout(r, 20));
+    await new Promise(r => setTimeout(r, 25));
 
     const res = await this.device.receiveFeatureReport(6);
     const data = new Uint8Array(res.buffer, res.byteOffset, res.byteLength);
+
+    if (data.length < 8) {
+      throw new Error(`Wired response frame too short: ${data.length} bytes (minimum 8 required)`);
+    }
+
     const base = (data[0] === 6 && data[1] === 0x83) ? 1 : 0;
-    return data.slice(base + 7, base + 519);
+    const extracted = data.slice(base + 7, base + 519);
+
+    if (extracted.length < 512) {
+      throw new Error(`Incomplete keymap payload: received ${extracted.length} bytes, expected 512`);
+    }
+
+    return extracted;
   }
 
-  // Exact v1.2 writeBase implementation (512 bytes)
+  /**
+   * Flashes 512-byte Table 0 keymap table.
+   * STRICTLY BLOCKED in hardware mode; routes to in-memory simulator in simulation mode.
+   */
   public async writeBaseTable(table0Data: Uint8Array): Promise<boolean> {
-    if (!this.device || !this.device.opened) {
-      throw new Error('Device not connected');
+    if (this.mode === 'webhid-readonly') {
+      this.log('[SECURITY BLOCK] Hardware keymap flashing is strictly disabled by safety policy.');
+      throw new SafetyViolationError(
+        'Hardware keymap writes are disabled to protect keyboard flash memory from unvalidated operations.',
+        'WRITES_DISABLED'
+      );
     }
 
-    if (table0Data.length !== 512) {
-      throw new Error('Table 0 data must be exactly 512 bytes');
-    }
-
-    const query = new Uint8Array(519);
-    query[0] = 0x03; // Command SET
-    query[1] = 0;
-    query[2] = 0;
-    query[3] = 1; // 1 packet (Table 0 Base Table)
-    query[4] = 0; // Packet Index 0
-    query[5] = 0;
-    query[6] = 2; // 512 bytes
-    query.set(table0Data, 7);
-
-    await this.device.sendFeatureReport(6, query);
-    await new Promise(r => setTimeout(r, 30));
+    // Simulator mode: validate payload invariants and update in RAM
+    SafetyPolicy.assertLayerPayloadIntegrity(table0Data);
+    this.simulator.loadLayer0(table0Data);
+    this.log('[Simulator] Virtual keymap Layer 0 successfully updated in RAM.');
+    await this.readMatrixData();
     return true;
   }
 
+  /**
+   * Reads full matrix data (512 bytes Layer 0 + 512 bytes Layer 1).
+   */
   public async readMatrixData(): Promise<Uint8Array | null> {
-    if (!this.device || !this.device.opened) {
-      this.log('Cannot read matrix: Device not connected');
-      return null;
-    }
-
     try {
-      this.log('Reading base 512-byte matrix table...');
+      this.log(`Reading keymap data (${this.mode === 'simulation' ? 'Simulator RAM' : 'Hardware Telemetry'})...`);
       const baseTable = await this.readBaseTable();
 
-      // First read after connect = save as baseline (no false positives)
+      // First read after connect = save as baseline
       if (!this.connectedBaseline) {
         this.connectedBaseline = new Uint8Array(baseTable);
-        this.log('Baseline captured: first read saved as stock reference.');
+        this.log('Stock baseline reference captured.');
       }
 
       const records = new Map<number, KeyRecord>();
@@ -183,20 +305,19 @@ class WebHIDController {
           baseTable[offset],
           baseTable[offset + 1],
           baseTable[offset + 2],
-          baseTable[offset + 3]
+          baseTable[offset + 3],
         ];
 
         const baselineBytes: [number, number, number, number] = [
           this.connectedBaseline[offset],
           this.connectedBaseline[offset + 1],
           this.connectedBaseline[offset + 2],
-          this.connectedBaseline[offset + 3]
+          this.connectedBaseline[offset + 3],
         ];
 
         const hidUsage = parseKeyRecordUsage(bytes);
         const originalUsage = parseKeyRecordUsage(baselineBytes);
 
-        // Only flag as modified if bytes differ from the connected baseline
         if (bytes[0] !== baselineBytes[0] || bytes[1] !== baselineBytes[1] ||
             bytes[2] !== baselineBytes[2] || bytes[3] !== baselineBytes[3]) {
           modifiedCount++;
@@ -206,118 +327,206 @@ class WebHIDController {
           matrixIdx: idx,
           hidUsage,
           originalUsage,
-          bytes
+          bytes,
         });
       }
 
       const full1024 = new Uint8Array(1024);
       full1024.set(baseTable, 0);
+      full1024.set(PRISTINE_STAGE5_MATRIX[1], 512);
 
       this.notify({
         matrixData: full1024,
         records,
-        modifiedCount
+        modifiedCount,
       });
 
-      this.log(`Base table loaded: 512 bytes parsed. ${modifiedCount} modified key mappings.`);
+      this.log(`Keymap loaded: 512 bytes parsed. ${modifiedCount} modified key mappings.`);
       return full1024;
     } catch (err: any) {
-      this.log(`Read base matrix failed: ${err.message}`);
+      this.log(`Read matrix failed: ${err.message}`);
       return null;
     }
   }
 
-  // Exact v1.2 Apply Key Remap flow with verified readBase verification
+  /**
+   * Key remap application.
+   * Enforces Fn key immutability at matrix index 53 and sentinel at index 127.
+   * In hardware mode, fails closed. In simulator mode, updates virtual matrix in RAM.
+   */
   public async writeKeyRemap(matrixIdx: number, newUsage: number): Promise<boolean> {
-    if (!this.device || !this.device.opened) {
-      this.log(`[Offline Mode] Simulated key remap for matrix ${matrixIdx} -> HID 0x${newUsage.toString(16)}`);
-      return true;
+    // Non-negotiable safety guard: Fn key and Sentinel cannot be remapped
+    SafetyPolicy.assertKeyRemapAllowed(matrixIdx);
+
+    if (this.mode === 'webhid-readonly') {
+      this.log(`[SECURITY BLOCK] Hardware remap write for matrix #${matrixIdx} blocked by safety policy.`);
+      throw new SafetyViolationError(
+        'Hardware keymap writes are disabled to protect keyboard flash memory.',
+        'WRITES_DISABLED'
+      );
     }
 
-    try {
-      this.log(`Reading current base table (readBase)...`);
-      const base = await this.readBaseTable();
-      const working = new Uint8Array(base);
-
-      const newBytes = encodeKeyRecordBytes(newUsage);
-      const offset = matrixIdx * 4;
-      this.log(`Staging matrix #${matrixIdx} (offset ${offset}) to [${newBytes.join(', ')}]...`);
-
-      working[offset] = newBytes[0];
-      working[offset + 1] = newBytes[1];
-      working[offset + 2] = newBytes[2];
-      working[offset + 3] = newBytes[3];
-
-      this.log(`Writing base table (writeBase)...`);
-      await this.writeBaseTable(working);
-
-      this.log('Verifying write with readBaseTable()...');
-      const got = await this.readBaseTable();
-      const verifiedBytes = [got[offset], got[offset + 1], got[offset + 2], got[offset + 3]];
-      this.log(`Read-back check for Matrix #${matrixIdx}: [${verifiedBytes.join(', ')}]`);
-
-      if (verifiedBytes.join(',') !== newBytes.join(',')) {
-        throw new Error(`Verification failed at matrix ${matrixIdx}: expected [${newBytes.join(', ')}], got [${verifiedBytes.join(', ')}]`);
-      }
-
-      this.log(`APPLY VERIFIED: Matrix #${matrixIdx} successfully remapped and verified! Fn table was not written.`);
-      await this.readMatrixData();
-      return true;
-    } catch (err: any) {
-      this.log(`APPLY ERROR: ${err.message}`);
-      return false;
-    }
+    // Simulator mode
+    this.simulator.updateKeyRemap(matrixIdx, newUsage);
+    this.log(`[Simulator] Remapped Matrix #${matrixIdx} -> HID 0x${newUsage.toString(16)} (Updated in RAM)`);
+    await this.readMatrixData();
+    return true;
   }
 
-  // Write raw 4-byte combo record (e.g. [0, 0x03, 0, 0x06] for Ctrl+Shift+C)
+  /**
+   * Raw combo key remap application.
+   * Enforces Fn key immutability at matrix index 53 and sentinel at index 127.
+   */
   public async writeKeyRemapRaw(matrixIdx: number, rawBytes: [number, number, number, number]): Promise<boolean> {
-    if (!this.device || !this.device.opened) {
-      this.log(`[Offline Mode] Simulated combo remap for matrix ${matrixIdx} -> [${rawBytes.join(', ')}]`);
-      return true;
+    // Non-negotiable safety guard
+    SafetyPolicy.assertKeyRemapAllowed(matrixIdx);
+
+    if (this.mode === 'webhid-readonly') {
+      this.log(`[SECURITY BLOCK] Hardware combo remap for matrix #${matrixIdx} blocked by safety policy.`);
+      throw new SafetyViolationError(
+        'Hardware combo writes are disabled to protect keyboard flash memory.',
+        'WRITES_DISABLED'
+      );
     }
 
-    try {
-      this.log(`Reading current base table (readBase)...`);
-      const base = await this.readBaseTable();
-      const working = new Uint8Array(base);
-
-      const offset = matrixIdx * 4;
-      this.log(`Staging combo at matrix #${matrixIdx} (offset ${offset}) to [${rawBytes.join(', ')}]...`);
-
-      working[offset] = rawBytes[0];
-      working[offset + 1] = rawBytes[1];
-      working[offset + 2] = rawBytes[2];
-      working[offset + 3] = rawBytes[3];
-
-      this.log(`Writing base table (writeBase)...`);
-      await this.writeBaseTable(working);
-
-      this.log('Verifying write with readBaseTable()...');
-      const got = await this.readBaseTable();
-      const verifiedBytes = [got[offset], got[offset + 1], got[offset + 2], got[offset + 3]];
-      this.log(`Read-back check for Matrix #${matrixIdx}: [${verifiedBytes.join(', ')}]`);
-
-      if (verifiedBytes.join(',') !== rawBytes.join(',')) {
-        throw new Error(`Verification failed at matrix ${matrixIdx}: expected [${rawBytes.join(', ')}], got [${verifiedBytes.join(', ')}]`);
-      }
-
-      this.log(`COMBO VERIFIED: Matrix #${matrixIdx} combo remap applied and verified!`);
-      await this.readMatrixData();
-      return true;
-    } catch (err: any) {
-      this.log(`APPLY ERROR: ${err.message}`);
-      return false;
-    }
+    // Simulator mode
+    this.simulator.updateKeyRemapRaw(matrixIdx, rawBytes);
+    this.log(`[Simulator] Remapped combo Matrix #${matrixIdx} -> [${rawBytes.join(', ')}] (Updated in RAM)`);
+    await this.readMatrixData();
+    return true;
   }
 
-  // --- SURGICAL RECOVERY: Restores ONLY Fn record (matrix 53 = [13, 0, 0, 0]) while keeping OS mode untouched ---
+  /**
+   * Surgical Fn Recovery: Restores ONLY the physical Fn record at Matrix Index 53.
+   * In hardware mode, fails closed. In simulator mode, restores stock [13, 0, 0, 0] in RAM.
+   */
   public async surgicalFnRecovery(): Promise<boolean> {
-    this.log('=== SURGICAL FN RECOVERY START ===');
-    this.log('Restoring Fn record (Matrix 53 -> [13, 0, 0, 0])...');
-    return await this.writeKeyRemap(53, 0xFF);
+    if (this.mode === 'webhid-readonly') {
+      this.log('[SECURITY BLOCK] Hardware writes are disabled in read-only mode.');
+      throw new SafetyViolationError(
+        'Hardware writes are disabled to protect keyboard flash memory.',
+        'WRITES_DISABLED'
+      );
+    }
+
+    this.log('=== SURGICAL FN RECOVERY (SIMULATOR) ===');
+    const fnOffset = PHYSICAL_FN_MATRIX_INDEX * 4;
+    const layer = this.simulator.readBaseTable();
+    layer[fnOffset] = 0x0D; // KeyType 13 (Fn)
+    layer[fnOffset + 1] = 0x00;
+    layer[fnOffset + 2] = 0x00;
+    layer[fnOffset + 3] = 0x00;
+    this.simulator.loadLayer0(layer);
+    this.log(`Restored physical Fn record (Matrix ${PHYSICAL_FN_MATRIX_INDEX} -> [13, 0, 0, 0]) in RAM.`);
+    await this.readMatrixData();
+    return true;
   }
 
-  // BYTE-BY-BYTE DIFF UTILITY (Calculates A ↔ B differences)
+  /**
+   * Queries hardware device model string (CMD 0x82).
+   * Safe non-mutating query. Safely handles Linux kernel 14-byte short read.
+   */
+  public async queryModel(): Promise<string> {
+    if (this.mode === 'simulation') {
+      return this.simulator.queryModel();
+    }
+
+    if (!this.device || !this.device.opened) {
+      throw new Error('Device not connected');
+    }
+
+    SafetyPolicy.assertCommandAllowed(APPROVED_READ_OPCODES.DEVICE_QUERY);
+
+    const query = new Uint8Array(519);
+    query[0] = APPROVED_READ_OPCODES.DEVICE_QUERY; // 0x82
+    query[1] = 0;
+    query[2] = 0;
+    query[3] = 1;
+
+    this.log('[WebHID] Querying device model string (CMD 0x82)...');
+    await this.device.sendFeatureReport(6, query);
+    await new Promise(r => setTimeout(r, 20));
+
+    const res = await this.device.receiveFeatureReport(6);
+    const data = new Uint8Array(res.buffer, res.byteOffset, res.byteLength);
+
+    // Extract ASCII string: accommodates both short 14-byte and full 520-byte buffers
+    let startOffset = 0;
+    if (data[0] === 6 && data[1] === 0x82) startOffset = 8;
+    else if (data[0] === 0x82) startOffset = 7;
+
+    let modelStr = '';
+    for (let i = startOffset; i < data.length; i++) {
+      const b = data[i];
+      if (b === 0) break;
+      if (b >= 32 && b <= 126) modelStr += String.fromCharCode(b);
+    }
+    const clean = modelStr.trim();
+    this.log(`[WebHID] Model query returned: "${clean || 'AULA F75'}"`);
+    return clean || 'AULA F75';
+  }
+
+  /**
+   * Enumerates device collections and audits permissions against Chrome Protected Usage filter.
+   */
+  public getDiagnostics(): InterfaceDiagnostic[] {
+    if (this.mode === 'simulation' || !this.device || !this.device.collections) {
+      return [
+        {
+          collectionIndex: 0,
+          usagePage: 0xFF00,
+          usage: 0x01,
+          inputReportsCount: 1,
+          outputReportsCount: 1,
+          featureReportsCount: 1,
+          reportIds: [6],
+          isVendorCollection: true,
+          isProtectedKeyboard: false,
+          clearanceStatus: 'safe_vendor_pipe',
+        },
+        {
+          collectionIndex: 1,
+          usagePage: 0x0001,
+          usage: 0x06,
+          inputReportsCount: 1,
+          outputReportsCount: 0,
+          featureReportsCount: 0,
+          reportIds: [1],
+          isVendorCollection: false,
+          isProtectedKeyboard: true,
+          clearanceStatus: 'blocked_protected_usage',
+        },
+      ];
+    }
+
+    return (this.device.collections || []).map((col: any, idx: number) => {
+      const isVendor = col.usagePage >= 0xFF00;
+      const isProtected = col.usagePage === 0x0001 && col.usage === 0x0006;
+      let clearanceStatus: InterfaceDiagnostic['clearanceStatus'] = 'unrecognized';
+
+      if (isVendor) clearanceStatus = 'safe_vendor_pipe';
+      else if (isProtected) clearanceStatus = 'blocked_protected_usage';
+
+      const reportIds: number[] = [];
+      (col.inputReports || []).forEach((r: any) => reportIds.push(r.reportId));
+      (col.outputReports || []).forEach((r: any) => reportIds.push(r.reportId));
+      (col.featureReports || []).forEach((r: any) => reportIds.push(r.reportId));
+
+      return {
+        collectionIndex: idx,
+        usagePage: col.usagePage,
+        usage: col.usage,
+        inputReportsCount: col.inputReports?.length || 0,
+        outputReportsCount: col.outputReports?.length || 0,
+        featureReportsCount: col.featureReports?.length || 0,
+        reportIds: Array.from(new Set(reportIds)),
+        isVendorCollection: isVendor,
+        isProtectedKeyboard: isProtected,
+        clearanceStatus,
+      };
+    });
+  }
+
   public compareDumps(dumpA: Uint8Array, dumpB: Uint8Array): DiffEntry[] {
     const diffs: DiffEntry[] = [];
     const len = Math.min(dumpA.length, dumpB.length);
@@ -327,7 +536,7 @@ class WebHIDController {
         const offsetHex = `0x${i.toString(16).toUpperCase().padStart(3, '0')}`;
         const valA = `0x${dumpA[i].toString(16).toUpperCase().padStart(2, '0')} (${dumpA[i]})`;
         const valB = `0x${dumpB[i].toString(16).toUpperCase().padStart(2, '0')} (${dumpB[i]})`;
-        
+
         let notes = 'Configuration byte';
         if (i < 512) {
           const matrixIdx = Math.floor(i / 4);
@@ -344,7 +553,7 @@ class WebHIDController {
           offsetDec: i,
           valA,
           valB,
-          notes
+          notes,
         });
       }
     }

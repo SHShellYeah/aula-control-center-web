@@ -133,8 +133,9 @@ class RgbControllerService {
 
   // Model Query (CMD 0x82): sends query twice per protocol specs
   public async queryModel(): Promise<string> {
-    if (!this.device || !this.device.opened) {
-      return 'AULA F75 (Simulated)';
+    if (webhid.activeMode === 'simulation' || !this.device || !this.device.opened) {
+      this.detectedModel = webhid.activeSimulator.queryModel();
+      return this.detectedModel;
     }
 
     try {
@@ -167,8 +168,10 @@ class RgbControllerService {
 
   // Read current lighting configuration via CMD 0x84 (returns 136 bytes)
   public async readDeviceConfig(silent = false): Promise<Uint8Array | null> {
-    if (!this.device || !this.device.opened) {
-      return null;
+    if (webhid.activeMode === 'simulation' || !this.device || !this.device.opened) {
+      const simConfig = webhid.activeSimulator.readConfig();
+      this.cachedConfig = simConfig;
+      return simConfig;
     }
 
     try {
@@ -266,8 +269,14 @@ class RgbControllerService {
       activeSoftwareAnim: null,
     });
 
-    if (!this.device || !this.device.opened) {
-      webhid.log(`[RGB Offline] Hardware effect set to #${effectId} (Color: ${normalizedColor}, Colorful: ${colorful})`);
+    if (webhid.activeMode === 'webhid-readonly') {
+      webhid.log(`[SECURITY BLOCK] Hardware RGB configuration writes are disabled in read-only mode.`);
+      return true;
+    }
+
+    if (webhid.activeMode === 'simulation' || !this.device || !this.device.opened) {
+      webhid.activeSimulator.updateConfig(effectId, speed, brightness, colorful ? 7 : 0);
+      webhid.log(`[RGB Simulator] Virtual effect set to #${effectId} (Color: ${normalizedColor}, Colorful: ${colorful})`);
       return true;
     }
 
@@ -427,7 +436,11 @@ class RgbControllerService {
   // - Padding (idx 385-512): 128 bytes zero padding
   // - Terminator (idx 513-514): 0x5A, 0xA5
   public async writeStaticColorProfile(hex: string): Promise<boolean> {
-    if (!this.device || !this.device.opened) return true;
+    if (webhid.activeMode === 'webhid-readonly') {
+      webhid.log('[SECURITY BLOCK] Hardware static color profile write disabled in read-only mode.');
+      return true;
+    }
+    if (webhid.activeMode === 'simulation' || !this.device || !this.device.opened) return true;
 
     try {
       const rgb = hexToRgb(hex);
@@ -471,8 +484,13 @@ class RgbControllerService {
   public async setSideLightMode(mode: number): Promise<boolean> {
     this.notify({ sideLightMode: mode });
 
-    if (!this.device || !this.device.opened) {
-      webhid.log(`[RGB Offline] Side light set to mode ${mode}`);
+    if (webhid.activeMode === 'webhid-readonly') {
+      webhid.log(`[SECURITY BLOCK] Hardware side light write disabled in read-only mode.`);
+      return true;
+    }
+
+    if (webhid.activeMode === 'simulation' || !this.device || !this.device.opened) {
+      webhid.log(`[RGB Simulator] Side light preview set to mode ${mode}`);
       return true;
     }
 
@@ -517,8 +535,13 @@ class RgbControllerService {
       activeSoftwareAnim: null,
     });
 
-    if (!this.device || !this.device.opened) {
-      webhid.log(`[RGB Offline] Per-key colors saved (${Object.keys(perKeyColors).length} keys).`);
+    if (webhid.activeMode === 'webhid-readonly') {
+      webhid.log(`[SECURITY BLOCK] Hardware per-key planar write disabled in read-only mode.`);
+      return true;
+    }
+
+    if (webhid.activeMode === 'simulation' || !this.device || !this.device.opened) {
+      webhid.log(`[RGB Simulator] Per-key colors saved (${Object.keys(perKeyColors).length} keys).`);
       return true;
     }
 
@@ -586,7 +609,7 @@ class RgbControllerService {
 
   // Send Direct Mode LED Frame (transmits both Planar CMD 0x06 and Direct CMD 0x08 for 122 keys)
   public async sendDirectFrame(colors: (RGBColor | null)[]): Promise<boolean> {
-    if (!this.device || !this.device.opened || this.isSendingFrame) {
+    if (webhid.activeMode === 'webhid-readonly' || webhid.activeMode === 'simulation' || !this.device || !this.device.opened || this.isSendingFrame) {
       return false;
     }
 
@@ -646,7 +669,7 @@ class RgbControllerService {
   private startKeepalive() {
     this.stopKeepalive();
     this.keepaliveTimer = setInterval(async () => {
-      if (this.state.isDirectStreaming && this.device?.opened && !this.isSendingFrame) {
+      if (webhid.activeMode !== 'webhid-readonly' && webhid.activeMode !== 'simulation' && this.state.isDirectStreaming && this.device?.opened && !this.isSendingFrame) {
         const frame = new Array(122).fill(null).map((_, idx) => {
           const hex = this.state.perKeyColors[idx] || this.state.staticColor;
           return hexToRgb(hex);
@@ -674,8 +697,8 @@ class RgbControllerService {
 
     webhid.log(`[RGB] Initializing software streaming for '${animType}'...`);
 
-    // Prepare hardware: switch keyboard into Custom Streaming Mode (0x12) so internal hardware shaders pause
-    if (this.device && this.device.opened) {
+    // Prepare hardware: switch keyboard into Custom Streaming Mode (0x12) only if not in simulation or read-only
+    if (webhid.activeMode !== 'webhid-readonly' && webhid.activeMode !== 'simulation' && this.device && this.device.opened) {
       try {
         // Attempt Report 0x39 / 0x3C direct mode unlock sequence (if supported by device descriptor)
         try {
@@ -767,8 +790,8 @@ class RgbControllerService {
       // Update state for UI preview
       this.notify({ perKeyColors: activePerKey });
 
-      // Send direct mode frame to physical hardware if connected
-      if (this.device?.opened && !this.isSendingFrame) {
+      // Send direct mode frame to physical hardware only if permitted
+      if (webhid.activeMode !== 'webhid-readonly' && webhid.activeMode !== 'simulation' && this.device?.opened && !this.isSendingFrame) {
         await this.sendDirectFrame(frameColors);
       }
     }, intervalMs);
